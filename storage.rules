@@ -1,0 +1,28 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Helper function
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Event documents
+    match /events/{eventId}/documents/{document=**} {
+      // Only authenticated users can read
+      allow read: if isAuthenticated();
+      
+      // Only authenticated users can upload (should be organizer, validated by app)
+      allow write: if isAuthenticated();
+    }
+    
+    // Indoor maps
+    match /events/{eventId}/indoor-maps/{map=**} {
+      // Anyone can read (for public event page)
+      allow read: if true;
+      
+      // Only authenticated users can upload
+      allow write: if isAuthenticated();
+    }
+  }
+}

@@ -1,0 +1,87 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+    
+    function isEventOrganizer(eventId) {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/events/$(eventId)).data.organizerId == request.auth.uid;
+    }
+    
+    // Events collection
+    match /events/{eventId} {
+      // Anyone can read events (for public pages)
+      allow read: if true;
+      
+      // Only authenticated users can create events
+      allow create: if isAuthenticated() && 
+        request.resource.data.organizerId == request.auth.uid;
+      
+      // Only the organizer can update/delete
+      allow update, delete: if isEventOrganizer(eventId);
+      
+      // Documents subcollection
+      match /documents/{documentId} {
+        allow read: if isEventOrganizer(eventId);
+        allow write: if isEventOrganizer(eventId);
+      }
+      
+      // Chunks subcollection (AI embeddings)
+      match /chunks/{chunkId} {
+        allow read: if isEventOrganizer(eventId);
+        allow write: if isEventOrganizer(eventId);
+      }
+    }
+    
+    // Registrations collection
+    match /registrations/{registrationId} {
+      // Organizer can read all registrations for their events
+      allow read: if isAuthenticated() && (
+        isEventOrganizer(resource.data.eventId) ||
+        isOwner(resource.data.userId)
+      );
+      
+      // Anyone can create registration (for ticket purchase)
+      allow create: if true;
+      
+      // Only server can update payment status (via admin SDK)
+      allow update: if false;
+      
+      allow delete: if false;
+    }
+    
+    // Tickets collection
+    match /tickets/{ticketId} {
+      // Organizer can read tickets for their events
+      allow read: if isAuthenticated() && 
+        isEventOrganizer(resource.data.eventId);
+      
+      // Server creates tickets (via admin SDK)
+      allow create: if false;
+      
+      // Organizer can update ticket status/reply
+      allow update: if isAuthenticated() && 
+        isEventOrganizer(resource.data.eventId);
+      
+      allow delete: if false;
+    }
+    
+    // Messages collection
+    match /messages/{messageId} {
+      // Organizer can read messages for their events
+      allow read: if isAuthenticated() && 
+        isEventOrganizer(resource.data.eventId);
+      
+      // Server creates messages (via admin SDK)
+      allow create, update, delete: if false;
+    }
+  }
+}
